@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(uuid())
+  username        String?   @unique
+  balance         Decimal   @default(0.00) @db.Decimal(10, 2)
+  shop_id         Int?
+  gameSessions    Json?     // Example: { "NarcosNET": { "freeSpins": 10 } }
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  gameLogs        GameLog[] // Relation to GameLog
+}
+
+model Shop {
+  id        Int      @id @default(autoincrement())
+  name      String?
+  percent   Int
+  max_win   Decimal  @db.Decimal(10, 2)
+  currency  String?  @default("USD")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Game {
+  id                          Int      @id @default(autoincrement())
+  name                        String   @unique // e.g., "NarcosNET", "DiscoFruitsNG"
+  bet_options                 String[] // For bet options like "1,2,5,10,20"
+  denomination                Decimal  @db.Decimal(5, 2)
+  current_bank                Decimal  @default(0.00) @db.Decimal(15, 2)
+  lines_percent_config_spin   Json?
+  lines_percent_config_bonus  Json?
+  advanced_settings           Json?    // For other static game settings
+  denominations_list          String[] // For Denominations list (can be empty)
+  increaseRTP                 Boolean? @default(true)
+  slotFastStop                Int?     @default(1)
+  slotJackPercent             Json?    // Array of percentages
+  slotJackpot                 Json?    // Array of jackpot values/objects
+  rezerv                      Decimal? @db.Decimal(10, 2)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  gameLogs                    GameLog[] // Relation to GameLog
+  jpgs                        Jpg[]     // Relation to Jpg model
+}
+
+model GameLog {
+  id                  Int      @id @default(autoincrement())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  gameId              Int
+  game                Game     @relation(fields: [gameId], references: [id])
+  request_details     Json
+  response_details    Json
+  bet_amount          Decimal  @db.Decimal(10, 2)
+  win_amount          Decimal  @db.Decimal(10, 2)
+  user_balance_before Decimal? @db.Decimal(10, 2)
+  user_balance_after  Decimal  @db.Decimal(10, 2)
+  game_bank_before    Decimal? @db.Decimal(15, 2)
+  game_bank_after     Decimal  @db.Decimal(15, 2)
+  timestamp           DateTime @default(now())
+
+  @@index([userId])
+  @@index([gameId])
+}
+
+model Jpg {
+  id             Int      @id @default(autoincrement())
+  gameId         Int      // Foreign key to Game
+  game           Game     @relation(fields: [gameId], references: [id])
+  jpg_name       String   // e.g., "GRAND", "MAJOR"
+  current_amount Decimal  @db.Decimal(15, 2)
+  seed_amount    Decimal? @db.Decimal(15, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([gameId])
+}
