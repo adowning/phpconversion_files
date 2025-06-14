@@ -21,7 +21,7 @@ namespace VanguardLTE\Games\NarcosNET
         ];
         public function __construct()
         {
-            $temp = file(base_path() . '/app/Games/NarcosNET/reels.txt');
+            $temp = file(__DIR__ . '/reels.txt');
             foreach( $temp as $str ) 
             {
                 $str = explode('=', $str);

@@ -59,27 +59,66 @@ namespace VanguardLTE\Games\NarcosNET
         public $count_balance = null;
         public $gameData = [];
         public $gameDataStatic = [];
+
+        public $MaxWin = null;
+        public $CurrentDenom = 1; // Default value
+        public $increaseRTP = 1;
+        public $slotFastStop = 1;
+        public $Denominations = [];
+        public $CurrentDenomination = 1; // Will be updated by CurrentDenom value
+        public $slotJackPercent = [];
+        public $slotJackpot = [];
+        public $AllBet = 0;
+        public $slotCurrency = '';
+        // Add declarations for other frequently used properties if they are referenced via \$this-> but not declared:
+        // Based on review, the following are not currently used as class properties in SlotSettings/Server logic,
+        // but declaring with defaults if they *were* to be used:
+        // public \$slotLines = 0;
+        // public \$slotLineBet = 0;
+        // public \$slotLineCount = 0;
+        // public \$slotFreespin = false;
+        // public \$slotFreeTotWin = 0;
+        // public \$slotFreeTotFree = 0;
+        // public \$slotFreeSymbol = null;
+        // public \$slotBonusTotWin = 0;
+        // public \$slotBonusTotFree = 0;
+        // public \$slotBonusSymbol = null;
+        // public \$slotBonusCount = 0;
+        // public \$slotBonusWinType = null;
+
         public function __construct($gameStateData)
         {
-            $this->playerId = $gameStateData['playerId'];
-            $this->user = (object) $gameStateData['user'];
-            $this->game = (object) $gameStateData['game'];
-            $this->shop = (object) $gameStateData['shop'];
-            $this->Bank = $gameStateData['bank'];
-            $this->Balance = $gameStateData['balance'];
-            $this->Percent = $gameStateData['shop']['percent'] ?? 0; // Ensure 'shop' and 'percent' exist
+            $this->playerId = $gameStateData['playerId'] ?? null;
+            $this->user = (object) ($gameStateData['user'] ?? []);
+            $this->game = (object) ($gameStateData['game'] ?? []);
+            $this->shop = (object) ($gameStateData['shop'] ?? []);
+            $this->Bank = $gameStateData['bank'] ?? 0;
+            $this->Balance = $gameStateData['balance'] ?? 0;
+            $this->Percent = $gameStateData['shop']['percent'] ?? 0;
             $this->gameData = $gameStateData['gameData'] ?? [];
-            $this->currency = $gameStateData['currency'] ?? ''; // Add if not directly available via shop object
-            $this->slotId = $gameStateData['game']['name'] ?? ''; // Assuming slotId is the game name
+            $this->currency = $gameStateData['currency'] ?? '';
+            $this->slotId = $gameStateData['game']['name'] ?? '';
             $this->slotDBId = $gameStateData['game']['id'] ?? '';
             $this->MaxWin = $gameStateData['shop']['max_win'] ?? 0;
-            $this->CurrentDenom = $gameStateData['game']['denomination'] ?? 1;
+
+            $this->Denominations = isset($gameStateData['game']['denominations_list']) && is_array($gameStateData['game']['denominations_list']) ? $gameStateData['game']['denominations_list'] : (isset($gameStateData['game']['denominations_list']) ? explode(',', $gameStateData['game']['denominations_list']) : []);
+            $this->CurrentDenom = isset($gameStateData['game']['denomination']) ? $gameStateData['game']['denomination'] : (!empty($this->Denominations) ? $this->Denominations[0] : 1);
+            $this->CurrentDenomination = $this->CurrentDenom; // Ensure CurrentDenomination reflects CurrentDenom
+            $this->AllBet = 0; // Explicitly initialize AllBet
+
             $this->jpgs = isset($gameStateData['jpgs']) ? $gameStateData['jpgs'] : [];
             $this->shop_id = $gameStateData['user']['shop_id'] ?? 0;
             $this->count_balance = $gameStateData['user']['count_balance'] ?? 0;
 
+            $this->increaseRTP = $gameStateData['game']['increaseRTP'] ?? 1;
+            $this->slotFastStop = $gameStateData['game']['slotFastStop'] ?? 1;
+            $this->slotJackPercent = $gameStateData['game']['slotJackPercent'] ?? [];
+            $this->slotJackpot = $gameStateData['game']['slotJackpot'] ?? [];
+            $this->slotCurrency = $gameStateData['currency'] ?? ($this->shop->currency ?? '');
+
+
             // Keep existing Paytable initialization
-            $this->increaseRTP = 1;
+            // $this->increaseRTP = 1; // Now initialized from $gameStateData or default
             $this->scaleMode = 0;
             $this->numFloat = 0;
             $this->Paytable['SYM_0'] = [
@@ -248,45 +287,38 @@ namespace VanguardLTE\Games\NarcosNET
             $this->splitScreen = false;
             $this->slotBonus = true;
             $this->slotGamble = true;
-            $this->slotFastStop = 1;
-            $this->slotExitUrl = '/';
-            $this->slotWildMpl = 1;
-            $this->GambleType = 1;
-            $this->Denominations = \VanguardLTE\Game::$values['denomination'];
-            $this->CurrentDenom = $this->Denominations[0];
-            $this->CurrentDenomination = $this->Denominations[0];
+            $this->slotFastStop = $gameStateData['game']['slotFastStop'] ?? 1; // Keep if it's a general setting
+            $this->slotExitUrl = '/'; // Static or from gameStateData if needed
+            $this->slotWildMpl = 1; // Static or from gameStateData if needed
+            $this->GambleType = 1; // Static or from gameStateData if needed
+
+            // Denominations, CurrentDenom, CurrentDenomination are now initialized above from $gameStateData
+
             $this->slotFreeCount = [
-                0, 
-                0, 
+                0,
+                0,
                 0, 
                 10, 
                 10, 
                 10
             ];
             $this->slotFreeMpl = 1;
-            $this->slotViewState = ($this->game->slotViewState == '' ? 'Normal' : $this->game->slotViewState);
+            $this->slotViewState = $gameStateData['game']['slotViewState'] ?? 'Normal';
             $this->hideButtons = [];
-            // $this->jpgs = \VanguardLTE\JPG::where('shop_id', $this->shop_id)->lockForUpdate()->get(); // Removed, initialized from $gameStateData
-            $this->slotJackPercent = [];
-            $this->slotJackpot = [];
-            if(isset($this->game->jp_1)) { // Check if jp_1 exists, assuming if one exists, all exist
-                for( $jp = 1; $jp <= 4; $jp++ )
-                {
-                    $this->slotJackpot[] = $this->game->{'jp_' . $jp};
-                    $this->slotJackPercent[] = $this->game->{'jp_' . $jp . '_percent'};
-                }
-            }
+            // $this->jpgs already initialized
+            // $this->slotJackPercent and $this->slotJackpot are now initialized from $gameStateData['game'] directly or default to []
+            // Loop for jp_1 etc. is removed as per refined instruction.
 
-            $this->Line = isset($gameStateData['game']['lines']) ? explode(',', $gameStateData['game']['lines']) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-            $this->gameLine = isset($gameStateData['game']['gameLine']) ? explode(',', $gameStateData['game']['gameLine']) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-            $this->Bet = isset($this->game->bet) ? explode(',', $this->game->bet) : [];
-            // Balance is already initialized from $gameStateData
-            $this->SymbolGame = isset($gameStateData['game']['SymbolGame']) ? $gameStateData['game']['SymbolGame'] : ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-            // Bank is already initialized from $gameStateData
-            // Percent is already initialized from $gameStateData
-            $this->WinGamble = $this->game->rezerv ?? 0;
-            // slotDBId is already initialized from $gameStateData
-            $this->slotCurrency = $this->shop->currency ?? '';
+            $this->Line = isset($gameStateData['game']['lines']) ? (is_array($gameStateData['game']['lines']) ? $gameStateData['game']['lines'] : explode(',', $gameStateData['game']['lines'])) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+            $this->gameLine = isset($gameStateData['game']['gameLine']) ? (is_array($gameStateData['game']['gameLine']) ? $gameStateData['game']['gameLine'] : explode(',', $gameStateData['game']['gameLine'])) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+            $this->Bet = isset($gameStateData['game']['bet']) ? (is_array($gameStateData['game']['bet']) ? $gameStateData['game']['bet'] : explode(',', $gameStateData['game']['bet'])) : [];
+            // Balance is already initialized
+            $this->SymbolGame = isset($gameStateData['game']['SymbolGame']) ? (is_array($gameStateData['game']['SymbolGame']) ? $gameStateData['game']['SymbolGame'] : explode(',', $gameStateData['game']['SymbolGame'])) : ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+            // Bank is already initialized
+            // Percent is already initialized
+            $this->WinGamble = $gameStateData['game']['rezerv'] ?? 0;
+            // slotDBId is already initialized
+            // slotCurrency is already initialized
             // count_balance is already initialized from $gameStateData
 
             if( ($this->user->address ?? 0) > 0 && $this->count_balance == 0 )
@@ -481,11 +513,11 @@ namespace VanguardLTE\Games\NarcosNET
             $strLog .= ' ############################################### ';
             $strLog .= "\n";
             $slg = '';
-            if( file_exists(storage_path('logs/') . $this->slotId . 'Internal.log') ) 
+            if( file_exists(__DIR__ . '/logs/' . $this->slotId . 'Internal.log') )
             {
-                $slg = file_get_contents(storage_path('logs/') . $this->slotId . 'Internal.log');
+                $slg = file_get_contents(__DIR__ . '/logs/' . $this->slotId . 'Internal.log');
             }
-            file_put_contents(storage_path('logs/') . $this->slotId . 'Internal.log', $slg . $strLog);
+            file_put_contents(__DIR__ . '/logs/' . $this->slotId . 'Internal.log', $slg . $strLog);
             exit( '' );
         }
         public function InternalErrorSilent($errcode)
@@ -497,11 +529,11 @@ namespace VanguardLTE\Games\NarcosNET
             $strLog .= ' ############################################### ';
             $strLog .= "\n";
             $slg = '';
-            if( file_exists(storage_path('logs/') . $this->slotId . 'Internal.log') ) 
+            if( file_exists(__DIR__ . '/logs/' . $this->slotId . 'Internal.log') )
             {
-                $slg = file_get_contents(storage_path('logs/') . $this->slotId . 'Internal.log');
+                $slg = file_get_contents(__DIR__ . '/logs/' . $this->slotId . 'Internal.log');
             }
-            file_put_contents(storage_path('logs/') . $this->slotId . 'Internal.log', $slg . $strLog);
+            file_put_contents(__DIR__ . '/logs/' . $this->slotId . 'Internal.log', $slg . $strLog);
         }
         public function SetBank($slotState = '', $sum, $slotEvent = '')
         {
